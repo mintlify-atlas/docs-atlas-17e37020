@@ -1,0 +1,63 @@
+{
+  "projectType": "api-service",
+  "projectName": "Hagaki Renderer",
+  "projectDescription": "A high-performance Rust HTTP service that renders customizable card game assets (single cards, fans, and albums) from base64-encoded JSON payloads, with disk caching and parallel processing.",
+  "theme": "aspen",
+  "primaryColor": "#6C3CE1",
+  "lightColor": "#A78BFA",
+  "darkColor": "#3B1FA3",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Deployment",
+            "pages": ["deployment/building", "deployment/systemd", "deployment/docker", "deployment/nginx"]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": ["concepts/hash-encoding", "concepts/frame-types", "concepts/dye-system", "concepts/caching"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": ["api/overview", "api/render-card", "api/render-fan", "api/render-album"]
+          },
+          {
+            "group": "Data Models",
+            "pages": ["api/card-request", "api/fan-request"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Single card rendering with customizable frame, dye color (Oklab color space), and kindled state",
+    "Fan layout rendering — multiple rotated cards arranged in a spread",
+    "Album grid rendering — multiple cards composed into a padded grid",
+    "Disk cache: renders are saved by name and served directly on repeat requests",
+    "In-memory frame cache: common frame assets loaded once at startup to reduce disk I/O",
+    "Parallel rendering via Rayon for fan and album layouts",
+    "Base64-encoded JSON hash-based request encoding for fully reproducible renders",
+    "Configurable 5-second render timeout with graceful error responses",
+    "Response headers: X-Source (disk/rendered) and X-Processing-Time for observability",
+    "Bundled bench.js benchmark tool for load testing all three render endpoints"
+  ],
+  "publicApiSurface": [
+    "GET /render/card/{hash64}",
+    "GET /render/fan/{hash64}",
+    "GET /render/album/{hash64}",
+    "CardRenderRequestData { id, variant, dye, kindled, frame_type, offset_x?, offset_y?, save_name? }",
+    "FanRenderRequestData { cards: CardRenderRequestData[], save_name? }",
+    "FrameType enum: MoonweaverFrame (0), EssentiaFrame (1), SnowglowFrame (2)"
+  ]
+}
