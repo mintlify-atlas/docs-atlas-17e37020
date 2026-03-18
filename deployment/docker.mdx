@@ -1,0 +1,116 @@
+---
+title: 'Docker'
+description: 'Build and run Hagaki in a Docker container with the required asset volume mounts.'
+keywords: ['docker', 'container', 'dockerfile', 'docker-compose', 'volumes']
+---
+
+## Building the image
+
+From the project root:
+
+```bash
+docker build -t hagaki .
+```
+
+## How the image is built
+
+The `Dockerfile` uses a two-stage build to keep the final image small:
+
+```dockerfile
+FROM rust:1.88-slim AS builder
+WORKDIR /app
+COPY . /app
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /app/target/release/hagaki /usr/local/bin/hagaki
+ENV RUST_LOG=info
+CMD ["hagaki"]
+```
+
+| Stage | Base image | Purpose |
+|-------|------------|---------|
+| `builder` | `rust:1.88-slim` | Compiles the release binary |
+| Runtime | `debian:bookworm-slim` | Runs the binary; no Rust toolchain included |
+
+Only `ca-certificates` is installed in the runtime image. The final image contains only the binary and its minimal OS dependencies.
+
+## Volume mounts (required)
+
+<Warning>
+The service will not work without the asset directories. The binary running at `/app` inside the container resolves paths relative to its working directory. You must mount the asset directories at exactly these container paths:
+
+| Host path (example) | Container path | Purpose |
+|---------------------|----------------|---------|
+| `/data/asset/private/frame` | `/asset/private/frame` | Card frame assets |
+| `/data/asset/private/idol` | `/asset/private/idol` | Character images |
+| `/data/asset/public/render` | `/asset/public/render` | Rendered output |
+
+The binary resolves `../asset/...` relative to `/app`, which means it looks for `/asset/...` at the container root level.
+</Warning>
+
+## Running the container
+
+Replace the host paths below with the actual locations of your asset directories:
+
+```bash
+docker run -d \
+  --name hagaki \
+  -p 8899:8899 \
+  -v /data/asset/private/frame:/asset/private/frame:ro \
+  -v /data/asset/private/idol:/asset/private/idol:ro \
+  -v /data/asset/public/render:/asset/public/render \
+  -e RUST_LOG=info \
+  hagaki
+```
+
+The `frame` and `idol` volumes are mounted read-only (`:ro`) since the service only reads from them. The `render` volume must be writable.
+
+## Docker Compose
+
+```yaml
+services:
+  hagaki:
+    image: hagaki
+    build: .
+    ports:
+      - "8899:8899"
+    volumes:
+      - /data/asset/private/frame:/asset/private/frame:ro
+      - /data/asset/private/idol:/asset/private/idol:ro
+      - /data/asset/public/render:/asset/public/render
+    environment:
+      RUST_LOG: info
+    restart: unless-stopped
+```
+
+Build and start:
+
+```bash
+docker compose up -d
+```
+
+## Overriding RUST_LOG
+
+The image sets `RUST_LOG=info` by default. Override it at runtime:
+
+<CodeGroup>
+
+```bash docker run
+docker run -e RUST_LOG=debug -p 8899:8899 ... hagaki
+```
+
+```yaml docker-compose.yml
+environment:
+  RUST_LOG: debug
+```
+
+</CodeGroup>
+
+See [Building from source](/deployment/building) for all valid `RUST_LOG` values.
+
+<Note>
+The container exposes port `8899`. Map it to a different host port (e.g., `-p 80:8899`) or place an Nginx reverse proxy in front of it. See the [Nginx reverse proxy](/deployment/nginx) guide.
+</Note>

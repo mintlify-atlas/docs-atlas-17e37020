@@ -1,0 +1,98 @@
+---
+title: 'Building from source'
+description: 'Compile the Hagaki binary from source and run it directly.'
+keywords: ['build', 'cargo', 'rust', 'source', 'compile']
+---
+
+## Prerequisites
+
+You need the Rust toolchain installed before building.
+
+- **Rust** 1.70 or later (install via [rustup](https://rustup.rs))
+- **cargo** (bundled with the Rust toolchain)
+
+Verify your installation:
+
+```bash
+rustc --version
+cargo --version
+```
+
+## Directory structure
+
+The Hagaki binary resolves asset paths **relative to its working directory**. Before running, ensure the following directory structure exists alongside the binary:
+
+```
+/home/ubuntu/
+├── hagaki/
+│   └── target/release/hagaki   # compiled binary
+└── asset/
+    ├── private/
+    │   ├── frame/               # card frame assets
+    │   └── idol/                # character images
+    └── public/
+        └── render/              # rendered output (must be writable)
+```
+
+The paths the service expects:
+
+| Path | Purpose |
+|------|---------|
+| `../asset/private/frame` | Card frame source files |
+| `../asset/private/idol` | Character image source files |
+| `../asset/public/render` | Rendered card output |
+
+<Warning>
+If the asset directories are missing or the binary is run from an unexpected working directory, the service will fail to read assets and write renders.
+</Warning>
+
+## Building
+
+Clone the repository to `/home/ubuntu/hagaki`, then run:
+
+```bash
+make build
+```
+
+This runs `cargo build --release` and produces the optimized binary at:
+
+```
+target/release/hagaki
+```
+
+## Running directly
+
+To run the binary without installing it as a service:
+
+```bash
+RUST_LOG=trace ./target/release/hagaki
+```
+
+The service binds to `0.0.0.0:8899` and begins accepting requests immediately.
+
+## RUST_LOG environment variable
+
+The `RUST_LOG` environment variable controls log verbosity. Set it before running the binary:
+
+```bash
+export RUST_LOG=info
+./target/release/hagaki
+```
+
+Valid values, from most to least verbose:
+
+| Value | Use case |
+|-------|----------|
+| `trace` | Deep debugging, high log volume |
+| `debug` | Development and troubleshooting |
+| `info` | Standard production output |
+| `warn` | Warnings and errors only |
+| `error` | Errors only |
+
+<Tip>
+Use `RUST_LOG=trace` when diagnosing rendering issues. Use `RUST_LOG=info` or `RUST_LOG=warn` in production to reduce I/O overhead.
+</Tip>
+
+<Note>
+The binary listens on `0.0.0.0:8899`. This binds to all network interfaces, so Hagaki should be placed behind a reverse proxy rather than exposed directly to the internet. See the [Nginx reverse proxy](/deployment/nginx) guide.
+</Note>

@@ -1,0 +1,68 @@
+---
+title: 'FanRenderRequestData'
+description: 'Field reference for the JSON object used by the fan and album render endpoints.'
+keywords: ['hagaki', 'fan', 'album', 'request', 'model', 'fields', 'cards']
+---
+
+`FanRenderRequestData` is the JSON structure encoded in the `{hash}` path segment of both the [`GET /render/fan`](/api/render-fan) and [`GET /render/album`](/api/render-album) endpoints. It wraps an array of [`CardRenderRequestData`](/api/card-request) objects and an optional composite-level cache key.
+
+## Fields
+
+<ParamField body="cards" type="CardRenderRequestData[]" required>
+  The cards to include in the render. Each element is a full [`CardRenderRequestData`](/api/card-request) object.
+
+  Cards are rendered in parallel. For the fan layout they are rotated and fanned; for the album layout they are arranged in a grid. The order of elements determines the visual position of each card.
+</ParamField>
+
+<ParamField body="save_name" type="string">
+  If provided, the **composite** output image is saved to `../asset/public/render/{save_name}`. On subsequent requests with the same `save_name`, the composite is served directly from disk without re-rendering.
+
+  <Note>
+    Individual cards within `cards` may also carry their own `save_name`. Those cache the individual card renders separately and are applied before the composite is assembled. The top-level `save_name` on `FanRenderRequestData` is the cache key for the final composite image.
+  </Note>
+</ParamField>
+
+## Example
+
+```json
+{
+  "cards": [
+    {
+      "id": 1,
+      "variant": 0,
+      "dye": 7864319,
+      "kindled": false,
+      "frame_type": 0
+    },
+    {
+      "id": 2,
+      "variant": 1,
+      "dye": 255,
+      "kindled": true,
+      "frame_type": 1
+    },
+    {
+      "id": 3,
+      "variant": 0,
+      "dye": 65280,
+      "kindled": false,
+      "frame_type": 2
+    }
+  ],
+  "save_name": "fan-preview.png"
+}
+```
+
+## Shared struct
+
+`FanRenderRequestData` is the same Rust struct for both the fan and album endpoints. The rendering layout (radial fan vs. grid) is determined by which endpoint you call, not by the payload.
+
+<Tip>
+  To cache individual card renders separately from the composite, set `save_name` on each `CardRenderRequestData` inside the `cards` array. This is useful when the same cards appear in multiple composites — the individual card renders are reused from disk rather than re-rendered each time.
+</Tip>
+
+## Related
+
+- [`CardRenderRequestData`](/api/card-request) — field reference for each element of the `cards` array
+- [`GET /render/fan`](/api/render-fan) — fan layout endpoint
+- [`GET /render/album`](/api/render-album) — album grid endpoint

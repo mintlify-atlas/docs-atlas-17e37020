@@ -1,0 +1,106 @@
+---
+title: 'Introduction'
+description: 'A high-performance Rust HTTP service for rendering customizable card game assets on demand.'
+keywords: ['hagaki', 'renderer', 'card game', 'png', 'rust', 'http', 'render']
+---
+
+Hagaki Renderer is a purpose-built asset rendering service for card game applications. It accepts a base64-encoded JSON payload over HTTP and returns a PNG image — either freshly rendered or served from disk cache — in a single round trip.
+
+<Columns cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Make your first render request in minutes.
+  </Card>
+  <Card title="API reference" icon="code" href="/api/overview">
+    Full endpoint and parameter documentation.
+  </Card>
+  <Card title="Deployment" icon="server" href="/deployment/building">
+    Build and run Hagaki on Linux, systemd, Docker, or behind Nginx.
+  </Card>
+  <Card title="Core concepts" icon="book" href="/concepts/hash-encoding">
+    Hash encoding, frame types, the dye system, and caching.
+  </Card>
+</Columns>
+
+---
+
+## What Hagaki does
+
+Hagaki exposes three HTTP endpoints. Each accepts a **base64url-encoded JSON hash** that fully describes the render payload and returns an `image/png` response.
+
+| Endpoint                  | Description                                     |
+| ------------------------- | ----------------------------------------------- |
+| `GET /render/card/{hash}` | Render a single card at 550×800 px.             |
+| `GET /render/fan/{hash}`  | Composite multiple cards into a fanned spread.  |
+| `GET /render/album/{hash}`| Composite multiple cards into a padded grid.    |
+
+---
+
+## Key features
+
+<Columns cols={2}>
+  <Card title="Oklab dye blending" icon="palette">
+    Cards are colorized using the perceptually-uniform Oklab color space for accurate, vibrant hue shifts that match human vision.
+  </Card>
+  <Card title="Parallel rendering" icon="bolt">
+    Fan and album renders use Rayon for multi-core parallelism — all cards in a batch render simultaneously across available CPU cores.
+  </Card>
+  <Card title="Disk caching" icon="hard-drive">
+    Set a `save_name` in your payload and Hagaki persists the render to disk, serving it instantly on repeat requests with no re-render cost.
+  </Card>
+  <Card title="In-memory frame cache" icon="database">
+    Frame overlay assets are loaded once at startup and shared across all requests via `Arc`, eliminating repeated disk I/O per request.
+  </Card>
+  <Card title="Reproducible renders" icon="rotate">
+    The same hash always produces the same image, making HTTP-level caching trivial to implement upstream of the service.
+  </Card>
+  <Card title="Observability headers" icon="chart-bar">
+    Every response includes `X-Source` (cache hit vs. fresh render) and `X-Processing-Time` measured in milliseconds.
+  </Card>
+</Columns>
+
+---
+
+## How it works
+
+<Steps>
+  <Step title="Construct a JSON payload">
+    Your client builds a JSON object describing the card or cards to render — including the character ID, frame type, dye value, and optional position offsets.
+  </Step>
+  <Step title="Encode the payload as a hash">
+    Serialize the JSON to a string and encode it as base64url (no padding). This hash becomes the final segment of the request URL and fully identifies the render.
+  </Step>
+  <Step title="Send a GET request">
+    Make a `GET` request to the appropriate `/render/*` endpoint. No request body, no authentication headers — just the hash in the path.
+  </Step>
+  <Step title="Receive the PNG">
+    Hagaki decodes the hash, checks disk cache if `save_name` was provided, composites the image using layered rendering, and returns PNG bytes with timing and source headers.
+  </Step>
+</Steps>
+
+---
+
+## Frame types
+
+Hagaki ships with three built-in frame styles. Each has different capabilities for static models, dye color support, and extendability.
+
+| Frame type | ID  | Dye support | Static model | Extendable |
+| ---------- | --- | ----------- | ------------ | ---------- |
+| Moonweaver | `0` | Yes         | Yes          | Yes        |
+| Essentia   | `1` | Yes         | No           | No         |
+| Snowglow   | `2` | No          | Yes          | Yes        |
+
+<Note>
+  All frames produce output at **550×800 px**. Frames that support dye blending apply your `dye` value using Oklab color physics. Frames without dye support ignore the `dye` field.
+</Note>
+
+---
+
+## Deployment and security
+
+<Warning>
+  Hagaki has no built-in authentication layer. It is designed as an internal microservice. Always deploy it behind a reverse proxy such as Nginx and restrict access to trusted callers only.
+</Warning>
+
+The service binds to `0.0.0.0:8899` by default. Renders time out after **5 seconds** — any request that exceeds this limit returns a `500` error rather than hanging indefinitely.
+
+Refer to the [deployment guides](/deployment/building) for instructions on running Hagaki with systemd, Docker, or behind Nginx.

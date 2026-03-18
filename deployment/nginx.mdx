@@ -1,0 +1,123 @@
+---
+title: 'Nginx reverse proxy'
+description: 'Configure Nginx to proxy requests to Hagaki and add TLS, security headers, and response caching.'
+keywords: ['nginx', 'reverse proxy', 'tls', 'security headers', 'proxy cache']
+---
+
+## Why a reverse proxy is required
+
+Hagaki binds to `0.0.0.0:8899` and has no built-in authentication, TLS, or rate limiting. You must not expose it directly to the internet. An Nginx reverse proxy handles:
+
+- **TLS termination** — serve HTTPS without modifying Hagaki
+- **Security headers** — add browser-level protections at the proxy layer
+- **Response caching** — cache rendered images so Hagaki only renders each card once
+- **Access control** — restrict access if needed without touching the application
+
+## Server block configuration
+
+```nginx
+server {
+  listen 80;
+  server_name hagaki.yuli-bot.com;
+
+  add_header X-Content-Type-Options nosniff;
+  add_header X-Frame-Options SAMEORIGIN;
+  add_header X-XSS-Protection "1; mode=block";
+
+  location / {
+    proxy_pass http://127.0.0.1:8899;
+  }
+}
+```
+
+### Directive reference
+
+| Directive | Value | Purpose |
+|-----------|-------|---------|
+| `listen 80` | — | Listens for HTTP on port 80 |
+| `server_name` | `hagaki.yuli-bot.com` | Hostname this block responds to |
+| `proxy_pass` | `http://127.0.0.1:8899` | Forwards all requests to Hagaki |
+
+### Security headers
+
+| Header | Value | Effect |
+|--------|-------|--------|
+| `X-Content-Type-Options` | `nosniff` | Prevents browsers from MIME-sniffing the response type, reducing the risk of drive-by download attacks |
+| `X-Frame-Options` | `SAMEORIGIN` | Blocks the page from being embedded in an iframe on a different origin, preventing clickjacking |
+| `X-XSS-Protection` | `1; mode=block` | Instructs older browsers to block pages when a reflected XSS attack is detected |
+
+<Note>
+`X-XSS-Protection` is largely redundant in modern browsers, which have built-in XSS protections. It is included for compatibility with older clients.
+</Note>
+
+## Enabling the site
+
+<Steps>
+  <Step title="Create the config file">
+    Save the server block above to `/etc/nginx/sites-available/hagaki`.
+  </Step>
+
+  <Step title="Create a symlink">
+    ```bash
+    sudo ln -s /etc/nginx/sites-available/hagaki /etc/nginx/sites-enabled/hagaki
+    ```
+  </Step>
+
+  <Step title="Test the configuration">
+    ```bash
+    sudo nginx -t
+    ```
+
+    Fix any reported errors before reloading.
+  </Step>
+
+  <Step title="Reload Nginx">
+    ```bash
+    sudo systemctl reload nginx
+    ```
+  </Step>
+</Steps>
+
+## Caching rendered images
+
+Hagaki renders are deterministic — the same request always produces the same image. You can use `proxy_cache` to serve cached renders directly from Nginx, bypassing Hagaki entirely on repeat requests.
+
+Add a cache zone in the `http` block of `/etc/nginx/nginx.conf`:
+
+```nginx
+http {
+  proxy_cache_path /var/cache/nginx/hagaki
+    levels=1:2
+    keys_zone=hagaki_cache:10m
+    max_size=1g
+    inactive=7d
+    use_temp_path=off;
+
+  # ... other http settings
+}
+```
+
+Then enable caching in the `location` block:
+
+```nginx
+location / {
+  proxy_pass         http://127.0.0.1:8899;
+  proxy_cache        hagaki_cache;
+  proxy_cache_valid  200 7d;
+  proxy_cache_use_stale error timeout updating;
+  add_header         X-Cache-Status $upstream_cache_status;
+}
+```
+
+<Tip>
+The `X-Cache-Status` header will be `HIT` for cached responses and `MISS` for the first request. This makes it easy to verify caching is working during testing.
+</Tip>
+
+<Warning>
+Create the cache directory before reloading Nginx:
+
+```bash
+sudo mkdir -p /var/cache/nginx/hagaki
+sudo chown www-data:www-data /var/cache/nginx/hagaki
+```
+</Warning>

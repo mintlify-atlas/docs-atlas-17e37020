@@ -1,0 +1,143 @@
+---
+title: 'Hash encoding'
+description: 'How Hagaki encodes render payloads as base64 URL path segments, and how to construct and decode them.'
+keywords: ['hash', 'base64', 'encoding', 'payload', 'url', 'json']
+---
+
+Every Hagaki endpoint uses a single URL path segment — the **hash** — to fully describe the render. There is no request body and no query string. The hash is a base64-encoded JSON object containing all render parameters.
+
+```
+GET /render/card/{hash}
+```
+
+## Why this design
+
+Encoding the full payload in the URL has three practical benefits:
+
+- **Reproducibility** — the same hash always produces the same image. You can store a hash and replay the exact same render later.
+- **Stateless server** — Hagaki holds no session state. Any instance can serve any request.
+- **HTTP caching** — because the hash is in the URL path, standard HTTP caches (Nginx `proxy_cache`, CDNs, browser caches) treat each unique render as a distinct cacheable resource.
+
+## Encoding process
+
+<Steps>
+  <Step title="Build the JSON payload">
+    Construct a JSON object with the render parameters you need. All whitespace is irrelevant — the encoded form is what matters.
+
+    ```json payload.json
+    {
+      "id": 42,
+      "variant": 0,
+      "dye": 16711680,
+      "kindled": true,
+      "frame_type": 0
+    }
+    ```
+  </Step>
+
+  <Step title="Serialize to a UTF-8 string">
+    Convert the object to a compact JSON string. Key order does not matter to the renderer, but it affects the resulting hash — use consistent serialization if you want stable hashes for caching.
+
+    ```
+    {"id":42,"variant":0,"dye":16711680,"kindled":true,"frame_type":0}
+    ```
+  </Step>
+
+  <Step title="Encode as base64 (no padding)">
+    Encode the UTF-8 bytes of the JSON string using **base64 standard alphabet, no padding**.
+
+    <CodeGroup>
+
+    ```javascript Node.js
+    const payload = {
+      id: 42,
+      variant: 0,
+      dye: 16711680,
+      kindled: true,
+      frame_type: 0,
+    };
+
+    const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    console.log(hash);
+    // eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9
+    ```
+
+    ```python Python
+    import json, base64
+
+    payload = {
+        "id": 42,
+        "variant": 0,
+        "dye": 16711680,
+        "kindled": True,
+        "frame_type": 0,
+    }
+
+    json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    hash = base64.urlsafe_b64encode(json_bytes).rstrip(b"=").decode("ascii")
+    print(hash)
+    # eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Use the hash in the URL">
+    Append the hash directly to the endpoint path. No additional URL encoding is required.
+
+    ```bash curl
+    curl -o card.png \
+      "http://localhost:8899/render/card/eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9"
+    ```
+  </Step>
+</Steps>
+
+## base64url vs standard no-pad
+
+The Rust decoder uses `base64 STANDARD_NO_PAD`, which is the standard alphabet (`A–Z`, `a–z`, `0–9`, `+`, `/`) with padding stripped. Node.js `Buffer.toString('base64url')` uses the URL-safe alphabet (`-` instead of `+`, `_` instead of `/`) and also strips padding.
+
+For the character set used in Hagaki payloads (printable ASCII JSON), the two encodings produce **identical output** — the characters `+` and `/` do not appear in the base64 output of typical JSON payloads because they only arise from specific byte patterns that JSON strings rarely produce. In practice, hashes generated with `base64url` in Node.js decode correctly on the Rust side.
+
+<Warning>
+  If you are encoding binary data or JSON with unusual Unicode characters, the `+`/`-` and `/`/`_` divergence between standard and URL-safe alphabets can cause decoding failures. For safety, use `base64url` encoding in clients and be aware that the Rust side uses `STANDARD_NO_PAD`. Test with real payloads if you are unsure.
+</Warning>
+
+## Character safety in URLs
+
+Base64 output (both standard and URL-safe variants, without padding) contains only alphanumeric characters plus at most `+`, `/`, `-`, or `_`. None of these characters require percent-encoding in a URL path segment. You can use the hash directly in the URL without any additional escaping.
+
+## Decoding a hash for debugging
+
+To inspect the payload inside an existing hash, reverse the process:
+
+<CodeGroup>
+
+```javascript Node.js
+const hash = 'eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9';
+const payload = JSON.parse(Buffer.from(hash, 'base64url').toString('utf-8'));
+console.log(payload);
+// { id: 42, variant: 0, dye: 16711680, kindled: true, frame_type: 0 }
+```
+
+```python Python
+import json, base64
+
+hash = 'eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9'
+# Re-add padding if needed
+padded = hash + '=' * (-len(hash) % 4)
+payload = json.loads(base64.urlsafe_b64decode(padded))
+print(payload)
+# {'id': 42, 'variant': 0, 'dye': 16711680, 'kindled': True, 'frame_type': 0}
+```
+
+```bash Shell
+hash='eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9'
+# Convert URL-safe chars back to standard, add padding, then decode
+echo "${hash}" | tr '-_' '+/' | awk '{l=length($0)%4; if(l==2) $0=$0"=="; else if(l==3) $0=$0"="; print}' | base64 -d
+```
+
+</CodeGroup>
+
+<Tip>
+  Decoding a hash in your browser console or a REPL is the fastest way to verify that your client is encoding payloads correctly before making a live request.
+</Tip>

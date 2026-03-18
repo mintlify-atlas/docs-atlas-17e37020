@@ -1,0 +1,116 @@
+---
+title: 'Dye system'
+description: 'How the dye field colorizes card frames using Oklab perceptual blending, and which frames support it.'
+keywords: ['dye', 'color', 'oklab', 'blending', 'hue', 'rgb', 'frame']
+---
+
+The dye system lets you colorize a card's frame overlay at render time. Instead of pre-authoring a separate asset for every color variant, you supply a single color value and Hagaki blends it into the frame's color layer using the Oklab perceptual color space.
+
+## The `dye` field
+
+The `dye` field is a **24-bit RGB integer** — the same value as a CSS hex color, interpreted as a decimal number.
+
+```
+dye = (R << 16) | (G << 8) | B
+```
+
+### Common values
+
+| Color | Hex | Decimal (`dye`) |
+| --- | --- | --- |
+| Red | `#FF0000` | `16711680` |
+| Green | `#00FF00` | `65280` |
+| Blue | `#0000FF` | `255` |
+| White | `#FFFFFF` | `16777215` |
+| Black | `#000000` | `0` |
+| Orange | `#FF8000` | `16744448` |
+| Purple | `#8000FF` | `8388863` |
+
+### Converting a hex color to a `dye` integer
+
+<CodeGroup>
+
+```javascript Node.js
+// From a CSS hex string (with or without '#')
+function hexToDye(hex) {
+  return parseInt(hex.replace('#', ''), 16);
+}
+
+console.log(hexToDye('#FF8000')); // 16744448
+console.log(hexToDye('8000FF'));  // 8388863
+```
+
+```python Python
+def hex_to_dye(hex_color: str) -> int:
+    return int(hex_color.lstrip('#'), 16)
+
+print(hex_to_dye('#FF8000'))  # 16744448
+print(hex_to_dye('8000FF'))   # 8388863
+```
+
+```rust Rust
+fn hex_to_dye(hex: &str) -> u32 {
+    u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap()
+}
+
+println!("{}", hex_to_dye("#FF8000")); // 16744448
+```
+
+</CodeGroup>
+
+## Oklab blending
+
+Hagaki does not perform a simple RGB tint. It converts both the frame pixel and the dye color to the **Oklab** color space before blending.
+
+Oklab is a perceptually uniform color space designed to match how human vision perceives color differences. Unlike RGB, equal numerical steps in Oklab correspond to equal perceived color differences. This means:
+
+- Hue shifts look natural across the full brightness range.
+- Saturated colors do not blow out to clipped white or muddy grey.
+- The frame's lighting and shading are preserved rather than overwritten.
+
+### Blend parameters
+
+The blending operation applies the following constants:
+
+| Parameter | Value | Effect |
+| --- | --- | --- |
+| Chroma blend strength | `0.90` | The output chroma (color saturation) is shifted 90% toward the dye color's chroma. |
+| Lightness blend strength | `0.50` | The output lightness blends 50% between the original pixel and the dye color. |
+| Inverse blend | `0.10` | The remaining 10% of chroma retains the original pixel's color influence. |
+| Chroma boost factor | `0.50` | Darker pixels receive a stronger chroma boost, deepening color in shadowed areas. |
+| Max chroma (squared) | `1.0` | Chroma is clamped to prevent oversaturation. |
+
+In plain terms: the dye color strongly shifts the hue and saturation of the frame (90% toward the target) while preserving roughly half the original luminance. Darker areas of the frame receive more vivid coloring to compensate for their lower base brightness.
+
+## Which frames support dye
+
+Only frames with a color layer (`color_model: true`) are affected by the `dye` field.
+
+| Frame | Dye support | Behavior |
+| --- | --- | --- |
+| Moonweaver | Yes | Color layer is blended with the dye value. |
+| Essentia | Yes | Color layer is blended with the dye value. |
+| Snowglow | No | `dye` field is ignored; no color layer exists. |
+
+<Warning>
+  Setting a `dye` value on a Snowglow card has no effect. The render completes normally, but the dye is silently discarded. If you need a colorized frame, use Moonweaver or Essentia instead.
+</Warning>
+
+<Tip>
+  To render a frame with its default colors and no dye applied, set `dye: 0`. A dye of `0` (black) with a 90% chroma shift produces near-zero chroma in the output, which effectively desaturates the color layer. If you want the frame's authored colors unmodified, ensure the frame has `color_model: false` (Snowglow) or author your color layer assets to look correct when fully desaturated.
+</Tip>
+
+## Full example
+
+```javascript Node.js
+const payload = {
+  id: 7,
+  variant: 0,
+  dye: 0x9B59B6, // Amethyst purple → 10179254
+  kindled: false,
+  frame_type: 0,  // Moonweaver supports dye
+};
+
+const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+const response = await fetch(`http://localhost:8899/render/card/${hash}`);
+```

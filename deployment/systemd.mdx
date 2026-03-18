@@ -1,0 +1,101 @@
+---
+title: 'Systemd service'
+description: 'Install, manage, and remove Hagaki as a systemd service on Ubuntu.'
+keywords: ['systemd', 'service', 'linux', 'ubuntu', 'daemon']
+---
+
+## Full deployment workflow
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Hagaki project to the expected path:
+
+    ```bash
+    git clone <repo-url> /home/ubuntu/hagaki
+    ```
+
+    Ensure the asset directories also exist at `/home/ubuntu/asset/`. See [Building from source](/deployment/building) for the required directory structure.
+  </Step>
+
+  <Step title="Build the binary">
+    ```bash
+    cd /home/ubuntu/hagaki
+    make build
+    ```
+
+    This produces `target/release/hagaki`.
+  </Step>
+
+  <Step title="Install the service">
+    ```bash
+    sudo make install-service
+    ```
+
+    This command:
+    - Sets ownership of the binary to the `ubuntu` user
+    - Copies `app.service` to `/lib/systemd/system/hagaki.service`
+    - Sets the service file permissions to `644`
+    - Runs `systemctl daemon-reload`
+    - Enables the service to start on boot
+  </Step>
+</Steps>
+
+## Managing the service
+
+### Deploying an update
+
+After rebuilding a new binary, restart the service with:
+
+```bash
+sudo make reload-service
+```
+
+This command:
+- Re-applies ownership of the binary to the `ubuntu` user
+- Restarts the `hagaki.service` unit
+- Prints the current service status
+
+### Removing the service
+
+To stop Hagaki and remove it from systemd entirely:
+
+```bash
+sudo make remove-service
+```
+
+This command:
+- Stops the running service
+- Deletes `/lib/systemd/system/hagaki.service`
+- Runs `systemctl daemon-reload`
+
+<Warning>
+`make remove-service` does not delete the binary or any asset files. It only removes the systemd unit.
+</Warning>
+
+## Viewing logs
+
+Stream live logs from the service:
+
+```bash
+journalctl -u hagaki -f
+```
+
+View the last 100 lines:
+
+```bash
+journalctl -u hagaki -n 100
+```
+
+Filter logs since the last boot:
+
+```bash
+journalctl -u hagaki -b
+```
+
+<Tip>
+The default `RUST_LOG` level in `app.service` is `info`. To increase verbosity temporarily, stop the service, run the binary directly with `RUST_LOG=debug`, reproduce the issue, then restart the service. See [Building from source](/deployment/building) for valid `RUST_LOG` values.
+</Tip>
+
+## Note on the ubuntu user
+
+The `Makefile` hardcodes `ubuntu` as the service owner in both `install-service` and `reload-service`. If you are deploying to a system where the primary user is not `ubuntu`, edit the `chown` lines in the `Makefile` before running these targets.

@@ -1,0 +1,133 @@
+---
+title: 'Render album'
+description: 'Render multiple cards arranged in a grid and return the result as PNG.'
+keywords: ['hagaki', 'render', 'album', 'grid', 'png', 'api', 'composite']
+---
+
+`GET /render/album/{hash}`
+
+Renders a set of cards in a rectangular grid and returns raw PNG bytes. The `{hash}` path segment encodes a [`FanRenderRequestData`](/api/fan-request) JSON object (the same struct used by the fan endpoint).
+
+## Path parameter
+
+<ParamField path="hash" type="string" required>
+  Base64 URL-safe, no-padding encoding of a `FanRenderRequestData` JSON object. Contains an array of cards and an optional top-level `save_name`. See [Hash encoding](/concepts/hash-encoding).
+</ParamField>
+
+## Grid layout
+
+Cards are rendered in parallel, then composited into a grid.
+
+**Column count**
+
+```
+cols = ceil(sqrt(1.35 × count))
+```
+
+The factor `1.35` biases the grid toward a wider-than-square aspect ratio, which suits the portrait orientation of cards.
+
+**Row count**
+
+```
+rows = ceil(count / cols)
+```
+
+**Output dimensions**
+
+```
+width  = cols × maxCardWidth  + (cols + 1) × 10
+height = rows × maxCardHeight + (rows + 1) × 10
+```
+
+Padding of **10 pixels** is applied between every card and around all edges. `maxCardWidth` and `maxCardHeight` are the largest dimensions among all rendered cards in the batch.
+
+<Note>
+  All card frames render at 550 × 800 pixels, so for a uniform batch the output size is fully predictable from the formula above.
+</Note>
+
+### Example: 6 cards
+
+```
+cols = ceil(sqrt(1.35 × 6)) = ceil(sqrt(8.1)) = ceil(2.85) = 3
+rows = ceil(6 / 3) = 2
+
+width  = 3 × 550  + 4  × 10 = 1650 + 40  = 1690 px
+height = 2 × 800  + 3  × 10 = 1600 + 30  = 1630 px
+```
+
+## Examples
+
+<CodeGroup>
+
+```bash cURL
+# Six cards in a 3×2 grid
+HASH=$(echo -n '{
+  "cards": [
+    {"id":1,"variant":0,"dye":7864319,"kindled":false,"frame_type":0},
+    {"id":2,"variant":1,"dye":255,"kindled":true,"frame_type":1},
+    {"id":3,"variant":0,"dye":65280,"kindled":false,"frame_type":2},
+    {"id":4,"variant":0,"dye":16711680,"kindled":false,"frame_type":0},
+    {"id":5,"variant":2,"dye":16776960,"kindled":true,"frame_type":0},
+    {"id":6,"variant":0,"dye":8388607,"kindled":false,"frame_type":1}
+  ],
+  "save_name": "album-preview.png"
+}' | tr -d '\n' | base64 -w0 | tr '+/' '-_' | tr -d '=')
+
+curl -o album.png "http://localhost:8899/render/album/$HASH"
+```
+
+```javascript Node.js
+const payload = {
+  cards: [
+    { id: 1, variant: 0, dye: 7864319,  kindled: false, frame_type: 0 },
+    { id: 2, variant: 1, dye: 255,      kindled: true,  frame_type: 1 },
+    { id: 3, variant: 0, dye: 65280,    kindled: false, frame_type: 2 },
+    { id: 4, variant: 0, dye: 16711680, kindled: false, frame_type: 0 },
+    { id: 5, variant: 2, dye: 16776960, kindled: true,  frame_type: 0 },
+    { id: 6, variant: 0, dye: 8388607,  kindled: false, frame_type: 1 },
+  ],
+  save_name: 'album-preview.png',
+};
+
+const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+const response = await fetch(`http://localhost:8899/render/album/${hash}`);
+
+if (!response.ok) {
+  throw new Error(`${response.status} ${await response.text()}`);
+}
+
+const buffer = await response.arrayBuffer();
+// buffer contains raw PNG bytes — 1690×1630 for this 6-card example
+```
+
+</CodeGroup>
+
+## Response
+
+**200 OK** — Raw PNG bytes.
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `image/png` |
+| `X-Source` | `rendered on request` or `loaded from disk cache` |
+| `X-Processing-Time` | e.g. `95.441ms` |
+
+## Errors
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `400` | `bad request - provided card hash is invalid` | `{hash}` failed base64 decoding |
+| `400` | `bad request - provided card hash is a valid json but does not follow API structure` | JSON decoded but does not match `FanRenderRequestData` |
+| `500` | `failed request - invalid frame type provided` | A card's `frame_type` is not `0`, `1`, or `2` |
+| `500` | `failed request - missing main image asset.` | A character image file was not found |
+| `500` | `failed request - failed to decode main image asset.` | A character image file could not be decoded |
+| `500` | `server error - failed to copy character` | Error compositing a character layer |
+| `500` | `server error - missing required asset: {key}` | A frame asset file is missing |
+| `500` | `server error - cannot write card image to buffer` | PNG encoding failed |
+| `500` | `gateway timeout - asset render took more than 5 seconds` | Render exceeded the 5-second timeout |
+
+## Related
+
+- [`FanRenderRequestData`](/api/fan-request) — full field reference for the JSON payload
+- [`CardRenderRequestData`](/api/card-request) — field reference for each card in the `cards` array
+- [Hash encoding](/concepts/hash-encoding) — how to construct the `{hash}` segment

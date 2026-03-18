@@ -1,0 +1,96 @@
+---
+title: 'Render fan'
+description: 'Render multiple cards arranged in a radial fan layout and return the result as PNG.'
+keywords: ['hagaki', 'render', 'fan', 'png', 'api', 'composite']
+---
+
+`GET /render/fan/{hash}`
+
+Renders a set of cards fanned out in a circular arc and returns raw PNG bytes. The `{hash}` path segment encodes a [`FanRenderRequestData`](/api/fan-request) JSON object.
+
+## Path parameter
+
+<ParamField path="hash" type="string" required>
+  Base64 URL-safe, no-padding encoding of a `FanRenderRequestData` JSON object. The struct contains an array of cards and an optional top-level `save_name`. See [Hash encoding](/concepts/hash-encoding).
+</ParamField>
+
+## Fan layout
+
+Cards are rendered in parallel and then composited into a single image:
+
+- Each card is rotated by **5.0° × its position index** around a circle whose centre is **3,000 pixels** below the bottom edge of the card stack.
+- Stacking order: outer cards appear on top of their neighbours; the centre card appears on top of all others.
+- Output dimensions are calculated dynamically to contain all rotated cards without clipping.
+
+<Note>
+  Because the output size depends on the number and rotation of cards, there is no fixed output resolution for the fan endpoint.
+</Note>
+
+## Examples
+
+<CodeGroup>
+
+```bash cURL
+# Three cards with different frame types
+HASH=$(echo -n '{
+  "cards": [
+    {"id":1,"variant":0,"dye":7864319,"kindled":false,"frame_type":0},
+    {"id":2,"variant":1,"dye":255,"kindled":true,"frame_type":1},
+    {"id":3,"variant":0,"dye":65280,"kindled":false,"frame_type":2}
+  ]
+}' | tr -d '\n' | base64 -w0 | tr '+/' '-_' | tr -d '=')
+
+curl -o fan.png "http://localhost:8899/render/fan/$HASH"
+```
+
+```javascript Node.js
+const payload = {
+  cards: [
+    { id: 1, variant: 0, dye: 7864319, kindled: false, frame_type: 0 }, // Moonweaver
+    { id: 2, variant: 1, dye: 255,     kindled: true,  frame_type: 1 }, // Essentia
+    { id: 3, variant: 0, dye: 65280,   kindled: false, frame_type: 2 }, // Snowglow
+  ],
+};
+
+const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+const response = await fetch(`http://localhost:8899/render/fan/${hash}`);
+
+if (!response.ok) {
+  throw new Error(`${response.status} ${await response.text()}`);
+}
+
+const buffer = await response.arrayBuffer();
+// buffer contains raw PNG bytes
+```
+
+</CodeGroup>
+
+## Response
+
+**200 OK** — Raw PNG bytes.
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `image/png` |
+| `X-Source` | `rendered on request` or `loaded from disk cache` |
+| `X-Processing-Time` | e.g. `48.210ms` |
+
+## Errors
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `400` | `bad request - provided card hash is invalid` | `{hash}` failed base64 decoding |
+| `400` | `bad request - provided card hash is a valid json but does not follow API structure` | JSON decoded but does not match `FanRenderRequestData` |
+| `500` | `failed request - invalid frame type provided` | A card's `frame_type` is not `0`, `1`, or `2` |
+| `500` | `failed request - missing main image asset.` | A character image file was not found |
+| `500` | `failed request - failed to decode main image asset.` | A character image file could not be decoded |
+| `500` | `server error - failed to copy character` | Error compositing a character layer |
+| `500` | `server error - missing required asset: {key}` | A frame asset file is missing |
+| `500` | `server error - cannot write card image to buffer` | PNG encoding failed |
+| `500` | `gateway timeout - asset render took more than 5 seconds` | Render exceeded the 5-second timeout |
+
+## Related
+
+- [`FanRenderRequestData`](/api/fan-request) — full field reference for the JSON payload
+- [`CardRenderRequestData`](/api/card-request) — field reference for each card in the `cards` array
+- [Hash encoding](/concepts/hash-encoding) — how to construct the `{hash}` segment

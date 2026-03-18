@@ -1,0 +1,64 @@
+---
+title: 'API overview'
+description: 'Base URL, endpoints, response format, and error codes for the Hagaki Renderer HTTP API.'
+keywords: ['hagaki', 'renderer', 'api', 'overview', 'endpoints', 'png', 'card']
+---
+
+Hagaki Renderer exposes a small HTTP API for rendering card game assets to PNG. All three endpoints follow the same pattern: encode a JSON payload as a base64 URL-safe string, then pass it as a path segment.
+
+## Base URL
+
+The service listens on port **8899**.
+
+```
+http://<host>:8899
+```
+
+<Warning>
+  Hagaki Renderer has no built-in authentication. Expose it only on a private network or behind a reverse proxy that enforces access control.
+</Warning>
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/render/card/{hash}` | Render a single card image |
+| `GET` | `/render/fan/{hash}` | Render multiple cards in a fan layout |
+| `GET` | `/render/album/{hash}` | Render multiple cards in a grid layout |
+
+Any request to an unrecognised path returns `418 I'm a Teapot`.
+
+## Hash encoding
+
+Each `{hash}` path segment is a base64 URL-safe, no-padding encoding of a JSON payload.
+
+1. Serialise your request struct to JSON.
+2. UTF-8 encode the JSON string to bytes.
+3. Encode the bytes with base64 standard alphabet, URL-safe variant, **no padding** (`=` stripped).
+4. Place the result directly in the URL path.
+
+See [Hash encoding](/concepts/hash-encoding) for full details and examples in multiple languages.
+
+## Response format
+
+A successful response is raw PNG bytes with `Content-Type: image/png`. There is no JSON wrapper.
+
+### Response headers
+
+| Header | Example value | Description |
+|--------|---------------|-------------|
+| `Content-Type` | `image/png` | Always PNG |
+| `X-Source` | `rendered on request` | How the image was produced. Also `loaded from disk cache` when served from a saved file. |
+| `X-Processing-Time` | `12.345ms` | Wall-clock time for the operation, in milliseconds. |
+
+## Error codes
+
+| Status | Description |
+|--------|-------------|
+| `400 Bad Request` | The `{hash}` could not be base64-decoded, or the decoded JSON does not match the expected request structure. |
+| `418 I'm a Teapot` | The request path is not recognised. |
+| `500 Internal Server Error` | A render pipeline error occurred — invalid frame type, missing or undecodable asset, buffer write failure, or a render that exceeded the 5-second timeout. |
+
+<Note>
+  There is no built-in rate limiting. If you need rate limiting, configure it at the reverse proxy layer.
+</Note>

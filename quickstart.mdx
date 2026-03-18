@@ -1,80 +1,213 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quickstart'
+description: 'Make your first render request to the Hagaki Renderer in minutes.'
+keywords: ['quickstart', 'render', 'card', 'fan', 'hash', 'base64']
 ---
 
-## Get started in three steps
+The Hagaki Renderer exposes a simple HTTP API: encode a JSON payload as a base64 hash, pass it as a URL path segment, and receive a PNG image in the response. This guide walks you through your first card render and a fan spread example.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before making requests, ensure the following are in place:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- The Hagaki Renderer service is running and reachable on port **8899**.
+- Asset directories are present at the expected paths relative to the service binary:
+  - `../asset/private/frame` — frame images
+  - `../asset/private/idol` — character images
+  - `../asset/public/render` — output directory for cached renders
 
-### Step 2: Deploy your changes
+<Note>
+  The service binds to `0.0.0.0:8899` by default. If you are running it behind a reverse proxy or in a container, substitute your actual host and port in the examples below.
+</Note>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+---
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Render a single card
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Construct the card payload">
+    Build a JSON object describing the card you want to render. All fields except `offset_x`, `offset_y`, and `save_name` are required.
 
-### Step 3: Go live
+    ```json card-payload.json
+    {
+      "id": 42,
+      "variant": 0,
+      "dye": 0,
+      "kindled": false,
+      "frame_type": 0
+    }
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    | Field        | Type      | Description                                                          |
+    | ------------ | --------- | -------------------------------------------------------------------- |
+    | `id`         | `u32`     | Character ID.                                                        |
+    | `variant`    | `u8`      | Card variant index.                                                  |
+    | `dye`        | `u32`     | Dye color value applied to supported frames.                         |
+    | `kindled`    | `boolean` | Whether the kindled effect is active.                                |
+    | `frame_type` | `u8`      | Frame to use: `0` = Moonweaver, `1` = Essentia, `2` = Snowglow.     |
+    | `offset_x`   | `i32?`    | Optional horizontal offset for the character image in pixels.        |
+    | `offset_y`   | `i32?`    | Optional vertical offset for the character image in pixels.          |
+    | `save_name`  | `string?` | Optional filename (without extension) for the cached render on disk. |
+
+    <Tip>
+      Output cards are always rendered at **550×800 px**. Use `offset_x` and `offset_y` to adjust character positioning within the frame.
+    </Tip>
+  </Step>
+
+  <Step title="Encode the payload as a base64 hash">
+    Serialize the JSON to a string and encode it as **base64url** (URL-safe base64, no padding). This encoded string becomes the `{hash}` path segment.
+
+    <CodeGroup>
+
+    ```javascript Node.js
+    const payload = {
+      id: 42,
+      variant: 0,
+      dye: 0,
+      kindled: false,
+      frame_type: 0,
+    };
+
+    const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    console.log(hash);
+    // eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MCwia2luZGxlZCI6ZmFsc2UsImZyYW1lX3R5cGUiOjB9
+    ```
+
+    ```bash Shell
+    payload='{"id":42,"variant":0,"dye":0,"kindled":false,"frame_type":0}'
+
+    # GNU coreutils (Linux)
+    hash=$(printf '%s' "$payload" | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+
+    # macOS / BSD
+    # hash=$(printf '%s' "$payload" | base64 | tr '+/' '-_' | tr -d '=')
+
+    echo "$hash"
+    ```
+
+    </CodeGroup>
+
+    <Note>
+      The service expects base64url encoding: `+` replaced with `-`, `/` replaced with `_`, and padding (`=`) removed. The shell example handles this transformation manually since most `base64` utilities output standard base64 by default.
+    </Note>
+  </Step>
+
+  <Step title="Make the request">
+    Pass the hash as the final path segment of the `/render/card/` endpoint.
+
+    <CodeGroup>
+
+    ```bash curl
+    curl -o card.png \
+      "http://localhost:8899/render/card/eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MCwia2luZGxlZCI6ZmFsc2UsImZyYW1lX3R5cGUiOjB9"
+    ```
+
+    ```javascript Node.js (fetch)
+    const payload = { id: 42, variant: 0, dye: 0, kindled: false, frame_type: 0 };
+    const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+
+    const response = await fetch(`http://localhost:8899/render/card/${hash}`);
+
+    if (!response.ok) {
+      throw new Error(`Render failed: ${response.status}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    require('fs').writeFileSync('card.png', Buffer.from(buffer));
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Interpret the response headers">
+    A successful response returns `200 OK` with a PNG body and the following headers:
+
+    | Header              | Example value          | Description                                                                                         |
+    | ------------------- | ---------------------- | --------------------------------------------------------------------------------------------------- |
+    | `Content-Type`      | `image/png`            | Always PNG.                                                                                         |
+    | `X-Source`          | `rendered on request`  | `rendered on request` for a fresh render; `loaded from disk cache` when the PNG was already saved.  |
+    | `X-Processing-Time` | `12.34ms`              | Wall-clock time the renderer took to produce the image.                                             |
+
+    ```bash Inspect headers with curl
+    curl -sI \
+      "http://localhost:8899/render/card/eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MCwia2luZGxlZCI6ZmFsc2UsImZyYW1lX3R5cGUiOjB9"
+    ```
+
+    <Tip>
+      Repeated requests for the same hash return `X-Source: loaded from disk cache` with a near-zero `X-Processing-Time`, since every output PNG is saved to `../asset/public/render/`.
+    </Tip>
+  </Step>
+</Steps>
+
+---
+
+## Render a fan spread
+
+A fan render composes multiple cards into a single fanned-out image. The payload wraps a `cards` array using the same per-card structure as above, plus an optional top-level `save_name`.
+
+<Steps>
+  <Step title="Build the fan payload">
+    ```json fan-payload.json
+    {
+      "cards": [
+        { "id": 1, "variant": 0, "dye": 0, "kindled": false, "frame_type": 0 },
+        { "id": 2, "variant": 1, "dye": 0, "kindled": true,  "frame_type": 1 },
+        { "id": 3, "variant": 0, "dye": 0, "kindled": false, "frame_type": 2 }
+      ]
+    }
+    ```
+  </Step>
+
+  <Step title="Encode and request">
+    <CodeGroup>
+
+    ```javascript Node.js
+    const fanPayload = {
+      cards: [
+        { id: 1, variant: 0, dye: 0, kindled: false, frame_type: 0 },
+        { id: 2, variant: 1, dye: 0, kindled: true,  frame_type: 1 },
+        { id: 3, variant: 0, dye: 0, kindled: false, frame_type: 2 },
+      ],
+    };
+
+    const hash = Buffer.from(JSON.stringify(fanPayload)).toString('base64url');
+    const response = await fetch(`http://localhost:8899/render/fan/${hash}`);
+    ```
+
+    ```bash curl
+    payload='{"cards":[{"id":1,"variant":0,"dye":0,"kindled":false,"frame_type":0},{"id":2,"variant":1,"dye":0,"kindled":true,"frame_type":1},{"id":3,"variant":0,"dye":0,"kindled":false,"frame_type":2}]}'
+    hash=$(printf '%s' "$payload" | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+
+    curl -o fan.png "http://localhost:8899/render/fan/${hash}"
+    ```
+
+    </CodeGroup>
+  </Step>
+</Steps>
+
+<Note>
+  The fan layout applies a **5° tilt** between adjacent cards arranged along a circular arc with a center distance of **3000 px**. The more cards you include, the wider the spread.
+</Note>
+
+---
+
+## Error responses
+
+| Status | Meaning                                                                                                                          |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `400`  | The hash could not be decoded, or the decoded JSON does not match the expected shape.                                            |
+| `500`  | The render timed out (limit: 5 seconds), a required asset file is missing, or the PNG buffer could not be written.               |
+| `418`  | The request path did not match any known endpoint.                                                                               |
+
+---
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="API reference" icon="book-open" href="/api/overview">
+    Full parameter reference for all three endpoints: card, fan, and album.
+  </Card>
+  <Card title="Frame types" icon="image" href="/concepts/frame-types">
+    Detailed breakdown of Moonweaver, Essentia, and Snowglow frame capabilities.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

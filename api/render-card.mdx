@@ -1,0 +1,79 @@
+---
+title: 'Render card'
+description: 'Render a single card image as PNG using a base64-encoded JSON payload.'
+keywords: ['hagaki', 'render', 'card', 'png', 'api']
+---
+
+`GET /render/card/{hash}`
+
+Renders a single card and returns raw PNG bytes. The `{hash}` path segment encodes a [`CardRenderRequestData`](/api/card-request) JSON object.
+
+## Path parameter
+
+<ParamField path="hash" type="string" required>
+  Base64 URL-safe, no-padding encoding of a `CardRenderRequestData` JSON object. See [Hash encoding](/concepts/hash-encoding) for construction details.
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```bash cURL
+# Payload: {"id":1,"variant":0,"dye":7864319,"kindled":false,"frame_type":0}
+# dye 7864319 = 0x780000 (dark red)
+HASH=$(echo -n '{"id":1,"variant":0,"dye":7864319,"kindled":false,"frame_type":0}' \
+  | base64 -w0 | tr '+/' '-_' | tr -d '=')
+
+curl -o card.png "http://localhost:8899/render/card/$HASH"
+```
+
+```javascript Node.js
+const payload = {
+  id: 1,
+  variant: 0,
+  dye: 7864319,   // 0x780000 — dark red
+  kindled: false,
+  frame_type: 0,  // MoonweaverFrame
+};
+
+const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+const response = await fetch(`http://localhost:8899/render/card/${hash}`);
+
+if (!response.ok) {
+  throw new Error(`${response.status} ${await response.text()}`);
+}
+
+const buffer = await response.arrayBuffer();
+// buffer contains raw PNG bytes
+```
+
+</CodeGroup>
+
+## Response
+
+**200 OK** — Raw PNG bytes.
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `image/png` |
+| `X-Source` | `rendered on request` or `loaded from disk cache` |
+| `X-Processing-Time` | e.g. `12.345ms` |
+
+## Errors
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `400` | `bad request - provided card hash is invalid` | `{hash}` failed base64 decoding |
+| `400` | `bad request - provided card hash is a valid json but does not follow API structure` | JSON decoded but does not match `CardRenderRequestData` |
+| `500` | `failed request - invalid frame type provided` | `frame_type` value is not `0`, `1`, or `2` |
+| `500` | `failed request - missing main image asset.` | Character image file not found on disk |
+| `500` | `failed request - failed to decode main image asset.` | Character image file exists but could not be decoded |
+| `500` | `server error - failed to copy character` | Error compositing the character layer |
+| `500` | `server error - missing required asset: {key}` | A frame asset file is missing |
+| `500` | `server error - cannot write card image to buffer` | PNG encoding of the result failed |
+| `500` | `gateway timeout - asset render took more than 5 seconds` | Render exceeded the 5-second timeout |
+
+## Related
+
+- [`CardRenderRequestData`](/api/card-request) — full field reference for the JSON payload
+- [Hash encoding](/concepts/hash-encoding) — how to construct the `{hash}` segment

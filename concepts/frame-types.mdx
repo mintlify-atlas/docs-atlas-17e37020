@@ -1,0 +1,91 @@
+---
+title: 'Frame types'
+description: 'The three built-in frame styles in Hagaki, their layer capabilities, kindled state, and asset file naming.'
+keywords: ['frame', 'moonweaver', 'essentia', 'snowglow', 'kindled', 'dye', 'static model', 'color model']
+---
+
+Frames are overlay layers composited on top of the character image during rendering. Each frame defines the border, decorative elements, and dye behavior of a card. Hagaki ships with three built-in frame types.
+
+## Frame comparison
+
+| Frame | ID | Dye support | Static layer | Extendable (kindled) | Dimensions |
+| --- | --- | --- | --- | --- | --- |
+| Moonweaver | `0` | Yes | Yes | Yes | 550×800 px |
+| Essentia | `1` | Yes | No | No | 550×800 px |
+| Snowglow | `2` | No | Yes | Yes | 550×800 px |
+
+All frames produce output at **550×800 px**.
+
+## Layer model
+
+Each frame can have up to two overlay layers, applied on top of the character image in order:
+
+### Static layer (`static_model`)
+
+A fixed overlay that is composited without any color transformation. It contains frame decorations — borders, glows, icons — that should always appear exactly as authored regardless of the dye color. **Moonweaver** and **Snowglow** have a static layer; **Essentia** does not.
+
+### Color layer (`color_model`)
+
+A dye-able overlay whose hue is shifted at render time using the `dye` field. This layer is composited using Oklab blending so the dye color blends perceptually. **Moonweaver** and **Essentia** have a color layer; **Snowglow** does not.
+
+<Note>
+  A frame can have both layers (Moonweaver), one layer (Essentia has only color; Snowglow has only static), or in theory neither — though all current frames have at least one.
+</Note>
+
+## Kindled state
+
+The `kindled` field activates an enhanced visual variant of the frame. Kindled cards use a different set of asset files that typically feature more elaborate decorations or effects.
+
+Only frames with `extendable: true` support the kindled state. **Moonweaver** and **Snowglow** are extendable; **Essentia** is not.
+
+<Warning>
+  If you set `kindled: true` on a frame that does not support it (Essentia), Hagaki silently falls back to the non-kindled version. The render succeeds and no error is returned. This behavior is intentional for backward compatibility.
+</Warning>
+
+## Choosing a frame
+
+<AccordionGroup>
+  <Accordion title="Moonweaver — full-featured dye and kindled">
+    Use Moonweaver when you want both dye color support and a kindled upgrade path. It has both a static decoration layer and a dye-able color layer, making it the most visually flexible frame. Best for cards where per-user color customization is important.
+  </Accordion>
+
+  <Accordion title="Essentia — dye without static overlay">
+    Use Essentia when you want a clean dye effect without additional static decorations. It has a color layer but no static layer, and does not support kindled. Best for minimal card designs.
+  </Accordion>
+
+  <Accordion title="Snowglow — static effects, no dye">
+    Use Snowglow when you want a fixed visual style that ignores dye entirely. It has a static overlay and supports kindled, but the `dye` field has no effect. Best for cards with a defined, unalterable color theme.
+  </Accordion>
+</AccordionGroup>
+
+## Asset file naming
+
+Frame images are loaded from the `../asset/private/frame/` directory at startup. The filename pattern is:
+
+```
+{frame_name}{suffix}-{type}.png
+```
+
+Where:
+
+- `{frame_name}` is the lowercase name of the frame: `moonweaver`, `essentia`, or `snowglow`.
+- `{suffix}` is `-kindled` when loading the kindled variant, or empty string for the base variant.
+- `{type}` is `color` for the dye-able layer or `static` for the fixed layer.
+
+### Examples
+
+| File | Frame | State | Layer |
+| --- | --- | --- | --- |
+| `moonweaver-color.png` | Moonweaver | Base | Color (dye-able) |
+| `moonweaver-static.png` | Moonweaver | Base | Static |
+| `moonweaver-kindled-color.png` | Moonweaver | Kindled | Color (dye-able) |
+| `moonweaver-kindled-static.png` | Moonweaver | Kindled | Static |
+| `essentia-color.png` | Essentia | Base | Color (dye-able) |
+| `snowglow-static.png` | Snowglow | Base | Static |
+| `snowglow-kindled-static.png` | Snowglow | Kindled | Static |
+
+<Note>
+  Only the files corresponding to a frame's actual layers are loaded. For example, `essentia-static.png` and `snowglow-color.png` are never referenced because Essentia has no static layer and Snowglow has no color layer.
+</Note>
+
+All frame images are loaded once at startup and held in an in-memory cache. See [Caching](/concepts/caching) for details.

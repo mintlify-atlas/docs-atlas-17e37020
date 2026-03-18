@@ -1,0 +1,108 @@
+---
+title: 'Caching'
+description: 'How Hagaki caches rendered images on disk and keeps frame assets in memory, and how to layer HTTP caching on top.'
+keywords: ['cache', 'disk cache', 'save_name', 'x-source', 'in-memory', 'frame cache', 'nginx']
+---
+
+Hagaki has two independent caching layers: an **in-memory frame cache** that is always active, and an **optional disk cache** that persists rendered images between requests.
+
+## In-memory frame cache
+
+At startup, Hagaki loads all frame overlay images from `../asset/private/frame/` into a `HashMap<String, DynamicImage>` wrapped in an `Arc`. This map is shared across all request handlers via an Axum extension.
+
+**Properties:**
+
+- Loaded once at startup — no per-request disk I/O for frame assets.
+- Shared across all concurrent requests without cloning the images.
+- Never evicted — frame assets remain in memory for the lifetime of the process.
+- If you add or replace frame image files on disk, you must restart the service for the changes to take effect.
+
+## Disk cache
+
+The disk cache is opt-in. To enable it for a render, include a `save_name` field in the payload.
+
+### How it works
+
+<Steps>
+  <Step title="Check for a cached file">
+    When a request arrives and `save_name` is set, Hagaki checks for an existing file at:
+
+    ```
+    ../asset/public/render/{save_name}
+    ```
+
+    If the file exists, its contents are read and returned immediately. The response header `X-Source` is set to `loaded from disk cache`.
+  </Step>
+
+  <Step title="Render and save">
+    If no cached file is found, Hagaki renders the image normally. After a successful render, the PNG is written to:
+
+    ```
+    ../asset/public/render/{save_name}
+    ```
+
+    The response header `X-Source` is set to `rendered on request`.
+  </Step>
+
+  <Step title="Serve subsequent requests from disk">
+    All future requests with the same `save_name` hit the disk cache and skip rendering entirely, with near-zero processing time.
+  </Step>
+</Steps>
+
+### Cache path
+
+The disk cache directory is fixed at `../asset/public/render/` relative to the Hagaki binary. The full path for a cached file is:
+
+```
+../asset/public/render/{save_name}
+```
+
+### `save_name` format
+
+Hagaki writes the file exactly as named — it does not append an extension. If you want a `.png` extension in the saved filename, include it in `save_name`:
+
+```json
+{ "save_name": "card-42-moonweaver.png" }
+```
+
+If you omit the extension, the file is saved without one. This does not affect the response — the renderer always returns `Content-Type: image/png` regardless.
+
+### No automatic invalidation
+
+The disk cache has **no TTL and no automatic eviction**. Files persist until you delete them manually. To force a re-render for a given `save_name`, delete the corresponding file from `../asset/public/render/`.
+
+<Warning>
+  If the underlying character or frame assets change, existing disk-cached files will not be updated automatically. You must delete the affected cached files and let them be re-rendered on the next request.
+</Warning>
+
+## Response headers
+
+Every response includes two observability headers:
+
+| Header | Values | Description |
+| --- | --- | --- |
+| `X-Source` | `rendered on request` \| `loaded from disk cache` | Indicates whether the response was freshly rendered or served from the disk cache. |
+| `X-Processing-Time` | e.g. `12.345ms` | Wall-clock time taken to produce the response, in milliseconds. |
+
+A cache hit will show `X-Source: loaded from disk cache` and a very low `X-Processing-Time` (typically under 1 ms for small files).
+
+## Reproducibility and HTTP caching
+
+Because the hash fully encodes all render parameters, the same hash always produces the same image. This makes Hagaki naturally compatible with HTTP-level caching upstream of the service.
+
+You can configure Nginx `proxy_cache` to cache responses keyed on the request URL. When a hash is seen again, Nginx serves the cached PNG directly without the request ever reaching Hagaki.
+
+<Tip>
+  See the [Nginx deployment guide](/deployment/nginx) for a ready-to-use `proxy_cache` configuration, including cache zone setup and `X-Cache-Status` header instrumentation.
+</Tip>
+
+### Combining disk cache and Nginx cache
+
+The two caching layers serve different purposes and work well together:
+
+| Layer | Scope | Eviction | Best for |
+| --- | --- | --- | --- |
+| Disk cache (`save_name`) | Selected renders only | Manual | Long-lived renders you want to persist across Hagaki restarts |
+| Nginx `proxy_cache` | All responses | TTL-based | Reducing request load without modifying render payloads |
+
+For most deployments, enabling Nginx caching is sufficient and requires no changes to the client payload. The `save_name` disk cache is useful when you want persistence across Hagaki process restarts or when you need the cached file to be accessible as a static asset from the `public/render/` directory.
