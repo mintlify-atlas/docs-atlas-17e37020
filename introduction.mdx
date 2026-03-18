@@ -6,7 +6,7 @@ keywords: ['hagaki', 'renderer', 'card game', 'png', 'rust', 'http', 'render']
 
 Hagaki Renderer is a purpose-built asset rendering service for card game applications. It accepts a base64-encoded JSON payload over HTTP and returns a PNG image — either freshly rendered or served from disk cache — in a single round trip.
 
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
     Make your first render request in minutes.
   </Card>
@@ -19,13 +19,13 @@ Hagaki Renderer is a purpose-built asset rendering service for card game applica
   <Card title="Core concepts" icon="book" href="/concepts/hash-encoding">
     Hash encoding, frame types, the dye system, and caching.
   </Card>
-</Columns>
+</CardGroup>
 
 ---
 
 ## What Hagaki does
 
-Hagaki exposes three HTTP endpoints. Each accepts a **base64url-encoded JSON hash** that fully describes the render payload and returns an `image/png` response.
+Hagaki exposes three HTTP endpoints. Each accepts a **base64-encoded JSON hash** that fully describes the render payload and returns an `image/png` response.
 
 | Endpoint                  | Description                                     |
 | ------------------------- | ----------------------------------------------- |
@@ -37,7 +37,7 @@ Hagaki exposes three HTTP endpoints. Each accepts a **base64url-encoded JSON has
 
 ## Key features
 
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card title="Oklab dye blending" icon="palette">
     Cards are colorized using the perceptually-uniform Oklab color space for accurate, vibrant hue shifts that match human vision.
   </Card>
@@ -56,7 +56,7 @@ Hagaki exposes three HTTP endpoints. Each accepts a **base64url-encoded JSON has
   <Card title="Observability headers" icon="chart-bar">
     Every response includes `X-Source` (cache hit vs. fresh render) and `X-Processing-Time` measured in milliseconds.
   </Card>
-</Columns>
+</CardGroup>
 
 ---
 
@@ -67,7 +67,7 @@ Hagaki exposes three HTTP endpoints. Each accepts a **base64url-encoded JSON has
     Your client builds a JSON object describing the card or cards to render — including the character ID, frame type, dye value, and optional position offsets.
   </Step>
   <Step title="Encode the payload as a hash">
-    Serialize the JSON to a string and encode it as base64url (no padding). This hash becomes the final segment of the request URL and fully identifies the render.
+    Serialize the JSON to a string and encode it as standard base64 (no padding). This hash becomes the final segment of the request URL and fully identifies the render.
   </Step>
   <Step title="Send a GET request">
     Make a `GET` request to the appropriate `/render/*` endpoint. No request body, no authentication headers — just the hash in the path.

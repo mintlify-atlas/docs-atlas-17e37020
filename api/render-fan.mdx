@@ -11,7 +11,7 @@ Renders a set of cards fanned out in a circular arc and returns raw PNG bytes. T
 ## Path parameter
 
 <ParamField path="hash" type="string" required>
-  Base64 URL-safe, no-padding encoding of a `FanRenderRequestData` JSON object. The struct contains an array of cards and an optional top-level `save_name`. See [Hash encoding](/concepts/hash-encoding).
+  Base64 standard alphabet, no-padding encoding of a `FanRenderRequestData` JSON object. The struct contains an array of cards and an optional top-level `save_name`. See [Hash encoding](/concepts/hash-encoding).
 </ParamField>
 
 ## Fan layout
@@ -19,7 +19,7 @@ Renders a set of cards fanned out in a circular arc and returns raw PNG bytes. T
 Cards are rendered in parallel and then composited into a single image:
 
 - Each card is rotated by **5.0° × its position index** around a circle whose centre is **3,000 pixels** below the bottom edge of the card stack.
-- Stacking order: outer cards appear on top of their neighbours; the centre card appears on top of all others.
+- Stacking order: the centre card is drawn on top of all others; outer cards are drawn underneath their inner neighbours. In a 5-card fan, the draw order from bottom to top is: outermost-left, outermost-right, next-left, next-right, centre.
 - Output dimensions are calculated dynamically to contain all rotated cards without clipping.
 
 <Note>
@@ -38,7 +38,7 @@ HASH=$(echo -n '{
     {"id":2,"variant":1,"dye":255,"kindled":true,"frame_type":1},
     {"id":3,"variant":0,"dye":65280,"kindled":false,"frame_type":2}
   ]
-}' | tr -d '\n' | base64 -w0 | tr '+/' '-_' | tr -d '=')
+}' | tr -d '\n' | base64 -w0 | tr -d '=')
 
 curl -o fan.png "http://localhost:8899/render/fan/$HASH"
 ```
@@ -52,7 +52,7 @@ const payload = {
   ],
 };
 
-const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+const hash = Buffer.from(JSON.stringify(payload)).toString('base64').replace(/=+$/, '');
 const response = await fetch(`http://localhost:8899/render/fan/${hash}`);
 
 if (!response.ok) {

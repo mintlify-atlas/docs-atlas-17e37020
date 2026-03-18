@@ -11,7 +11,7 @@ Renders a set of cards in a rectangular grid and returns raw PNG bytes. The `{ha
 ## Path parameter
 
 <ParamField path="hash" type="string" required>
-  Base64 URL-safe, no-padding encoding of a `FanRenderRequestData` JSON object. Contains an array of cards and an optional top-level `save_name`. See [Hash encoding](/concepts/hash-encoding).
+  Base64 standard alphabet, no-padding encoding of a `FanRenderRequestData` JSON object. Contains an array of cards and an optional top-level `save_name`. See [Hash encoding](/concepts/hash-encoding).
 </ParamField>
 
 ## Grid layout
@@ -71,7 +71,7 @@ HASH=$(echo -n '{
     {"id":6,"variant":0,"dye":8388607,"kindled":false,"frame_type":1}
   ],
   "save_name": "album-preview.png"
-}' | tr -d '\n' | base64 -w0 | tr '+/' '-_' | tr -d '=')
+}' | tr -d '\n' | base64 -w0 | tr -d '=')
 
 curl -o album.png "http://localhost:8899/render/album/$HASH"
 ```
@@ -89,7 +89,7 @@ const payload = {
   save_name: 'album-preview.png',
 };
 
-const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+const hash = Buffer.from(JSON.stringify(payload)).toString('base64').replace(/=+$/, '');
 const response = await fetch(`http://localhost:8899/render/album/${hash}`);
 
 if (!response.ok) {

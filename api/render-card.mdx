@@ -11,7 +11,7 @@ Renders a single card and returns raw PNG bytes. The `{hash}` path segment encod
 ## Path parameter
 
 <ParamField path="hash" type="string" required>
-  Base64 URL-safe, no-padding encoding of a `CardRenderRequestData` JSON object. See [Hash encoding](/concepts/hash-encoding) for construction details.
+  Base64 standard alphabet, no-padding encoding of a `CardRenderRequestData` JSON object. See [Hash encoding](/concepts/hash-encoding) for construction details.
 </ParamField>
 
 ## Examples
@@ -22,7 +22,7 @@ Renders a single card and returns raw PNG bytes. The `{hash}` path segment encod
 # Payload: {"id":1,"variant":0,"dye":7864319,"kindled":false,"frame_type":0}
 # dye 7864319 = 0x780000 (dark red)
 HASH=$(echo -n '{"id":1,"variant":0,"dye":7864319,"kindled":false,"frame_type":0}' \
-  | base64 -w0 | tr '+/' '-_' | tr -d '=')
+  | base64 -w0 | tr -d '=')
 
 curl -o card.png "http://localhost:8899/render/card/$HASH"
 ```
@@ -36,7 +36,7 @@ const payload = {
   frame_type: 0,  // MoonweaverFrame
 };
 
-const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+const hash = Buffer.from(JSON.stringify(payload)).toString('base64').replace(/=+$/, '');
 const response = await fetch(`http://localhost:8899/render/card/${hash}`);
 
 if (!response.ok) {

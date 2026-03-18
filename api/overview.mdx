@@ -4,7 +4,7 @@ description: 'Base URL, endpoints, response format, and error codes for the Haga
 keywords: ['hagaki', 'renderer', 'api', 'overview', 'endpoints', 'png', 'card']
 ---
 
-Hagaki Renderer exposes a small HTTP API for rendering card game assets to PNG. All three endpoints follow the same pattern: encode a JSON payload as a base64 URL-safe string, then pass it as a path segment.
+Hagaki Renderer exposes a small HTTP API for rendering card game assets to PNG. All three endpoints follow the same pattern: encode a JSON payload as a base64 standard no-pad string, then pass it as a path segment.
 
 ## Base URL
 
@@ -30,11 +30,11 @@ Any request to an unrecognised path returns `418 I'm a Teapot`.
 
 ## Hash encoding
 
-Each `{hash}` path segment is a base64 URL-safe, no-padding encoding of a JSON payload.
+Each `{hash}` path segment is a base64 standard alphabet, no-padding encoding of a JSON payload.
 
 1. Serialise your request struct to JSON.
 2. UTF-8 encode the JSON string to bytes.
-3. Encode the bytes with base64 standard alphabet, URL-safe variant, **no padding** (`=` stripped).
+3. Encode the bytes with base64 **standard alphabet** (`+` and `/`), **no padding** (`=` stripped).
 4. Place the result directly in the URL path.
 
 See [Hash encoding](/concepts/hash-encoding) for full details and examples in multiple languages.

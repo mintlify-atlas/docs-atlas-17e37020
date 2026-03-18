@@ -96,9 +96,9 @@ Only frames with a color layer (`color_model: true`) are affected by the `dye` f
   Setting a `dye` value on a Snowglow card has no effect. The render completes normally, but the dye is silently discarded. If you need a colorized frame, use Moonweaver or Essentia instead.
 </Warning>
 
-<Tip>
-  To render a frame with its default colors and no dye applied, set `dye: 0`. A dye of `0` (black) with a 90% chroma shift produces near-zero chroma in the output, which effectively desaturates the color layer. If you want the frame's authored colors unmodified, ensure the frame has `color_model: false` (Snowglow) or author your color layer assets to look correct when fully desaturated.
-</Tip>
+<Warning>
+  There is no "no dye" value. The `dye` field always affects the color layer of frames that support it. Setting `dye: 0` applies black as the dye color — this blends 50% of the lightness toward black and reduces chroma to 10% of the original, resulting in a dark, desaturated frame. If you want a frame rendered with its authored colors unmodified, use a frame type with `color_model: false` (Snowglow), which ignores the `dye` field entirely.
+</Warning>
 
 ## Full example
 
@@ -111,6 +111,6 @@ const payload = {
   frame_type: 0,  // Moonweaver supports dye
 };
 
-const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+const hash = Buffer.from(JSON.stringify(payload)).toString('base64').replace(/=+$/, '');
 const response = await fetch(`http://localhost:8899/render/card/${hash}`);
 ```

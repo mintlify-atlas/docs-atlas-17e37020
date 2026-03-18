@@ -57,7 +57,9 @@ Encoding the full payload in the URL has three practical benefits:
       frame_type: 0,
     };
 
-    const hash = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    // Use 'base64' (standard alphabet: +/), then strip the trailing '=' padding.
+    // Do NOT use 'base64url' — it substitutes '-' and '_' which the Rust decoder won't accept.
+    const hash = Buffer.from(JSON.stringify(payload)).toString('base64').replace(/=+$/, '');
     console.log(hash);
     // eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9
     ```
@@ -74,9 +76,22 @@ Encoding the full payload in the URL has three practical benefits:
     }
 
     json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    hash = base64.urlsafe_b64encode(json_bytes).rstrip(b"=").decode("ascii")
+    # Use standard b64encode (+ and /), then strip the trailing '=' padding.
+    hash = base64.b64encode(json_bytes).rstrip(b"=").decode("ascii")
     print(hash)
     # eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9
+    ```
+
+    ```bash Shell
+    payload='{"id":42,"variant":0,"dye":16711680,"kindled":true,"frame_type":0}'
+
+    # GNU coreutils (Linux): standard base64, strip padding only
+    hash=$(printf '%s' "$payload" | base64 -w 0 | tr -d '=')
+
+    # macOS / BSD
+    # hash=$(printf '%s' "$payload" | base64 | tr -d '=')
+
+    echo "$hash"
     ```
 
     </CodeGroup>
@@ -94,12 +109,21 @@ Encoding the full payload in the URL has three practical benefits:
 
 ## base64url vs standard no-pad
 
-The Rust decoder uses `base64 STANDARD_NO_PAD`, which is the standard alphabet (`A–Z`, `a–z`, `0–9`, `+`, `/`) with padding stripped. Node.js `Buffer.toString('base64url')` uses the URL-safe alphabet (`-` instead of `+`, `_` instead of `/`) and also strips padding.
+The Rust decoder uses `base64 STANDARD_NO_PAD`, which is the **standard** alphabet (`A–Z`, `a–z`, `0–9`, `+`, `/`) with no padding. Node.js `Buffer.toString('base64url')` uses the **URL-safe** alphabet (`-` instead of `+`, `_` instead of `/`) and also strips padding.
 
-For the character set used in Hagaki payloads (printable ASCII JSON), the two encodings produce **identical output** — the characters `+` and `/` do not appear in the base64 output of typical JSON payloads because they only arise from specific byte patterns that JSON strings rarely produce. In practice, hashes generated with `base64url` in Node.js decode correctly on the Rust side.
+These two alphabets differ at positions 62 and 63:
+
+| Position | Standard (`STANDARD_NO_PAD`) | URL-safe (`base64url`) |
+|----------|------------------------------|------------------------|
+| 62 | `+` | `-` |
+| 63 | `/` | `_` |
 
 <Warning>
-  If you are encoding binary data or JSON with unusual Unicode characters, the `+`/`-` and `/`/`_` divergence between standard and URL-safe alphabets can cause decoding failures. For safety, use `base64url` encoding in clients and be aware that the Rust side uses `STANDARD_NO_PAD`. Test with real payloads if you are unsure.
+  The bench.js bundled with the project uses Node.js `base64url` encoding, which produces `-` and `_` instead of `+` and `/`. The Rust decoder uses `STANDARD_NO_PAD`, which expects `+` and `/`. These are incompatible for any payload that maps to byte values at positions 62 or 63.
+
+  In practice, most short JSON payloads do not produce these characters in their base64 output, so `base64url` hashes from Node.js typically decode successfully. However, this is not guaranteed — you should use the standard no-pad alphabet (`+`/`/`, no `=`) to be safe with all payloads.
+
+  The shell encoding examples (using `tr '+/' '-_'`) produce URL-safe output, which may similarly fail for edge-case payloads. Replace `tr '+/' '-_' | tr -d '='` with `tr -d '='` to use the standard alphabet in shell scripts.
 </Warning>
 
 ## Character safety in URLs
@@ -114,7 +138,8 @@ To inspect the payload inside an existing hash, reverse the process:
 
 ```javascript Node.js
 const hash = 'eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9';
-const payload = JSON.parse(Buffer.from(hash, 'base64url').toString('utf-8'));
+// Use 'base64' to decode the standard alphabet
+const payload = JSON.parse(Buffer.from(hash, 'base64').toString('utf-8'));
 console.log(payload);
 // { id: 42, variant: 0, dye: 16711680, kindled: true, frame_type: 0 }
 ```
@@ -123,9 +148,9 @@ console.log(payload);
 import json, base64
 
 hash = 'eyJpZCI6NDIsInZhcmlhbnQiOjAsImR5ZSI6MTY3MTE2ODAsImtpbmRsZWQiOnRydWUsImZyYW1lX3R5cGUiOjB9'
-# Re-add padding if needed
+# Re-add padding and decode using standard alphabet
 padded = hash + '=' * (-len(hash) % 4)
-payload = json.loads(base64.urlsafe_b64decode(padded))
+payload = json.loads(base64.b64decode(padded))
 print(payload)
 # {'id': 42, 'variant': 0, 'dye': 16711680, 'kindled': True, 'frame_type': 0}
 ```
